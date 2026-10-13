@@ -6,6 +6,7 @@ import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { prisma } from './lib/prisma';
+import { ensureBootstrap } from './boot';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import authRoutes from './routes/auth.routes';
 import productsRoutes from './routes/products.routes';
@@ -83,11 +84,32 @@ if (fs.existsSync(clientHtml)) {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  🧾  Shablon POS API tayyor`);
-  console.log(`  ➜  http://localhost:${PORT}/health`);
-  console.log(`  ➜  Telefon uchun: http://<LAN-IP>:${PORT}\n`);
-});
+let server: ReturnType<typeof app.listen>;
+
+async function main(): Promise<void> {
+  // Bo'sh bazani tayyorlash: do'kon, admin/kassirlar, mahsulotlar (idempotent).
+  try {
+    await ensureBootstrap();
+    console.log("  ✔ Boshlang'ich ma'lumotlar tayyor (do'kon, foydalanuvchilar, mahsulotlar)");
+  } catch (err) {
+    const message = (err as Error).message || String(err);
+    if (isProd) {
+      console.error('  ⚠️  Baza tayyorlashda xatolik:', message);
+      console.error('     DATABASE_URL sozlamasini tekshiring (Railway → Variables).');
+    } else {
+      console.error('  ⚠️  Baza hozircha yetib bo\'lmadi:', message);
+      console.error('     Server ishga tushdi; /health dan holatni kuzating.');
+    }
+  }
+
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  🧾  Shablon POS API tayyor`);
+    console.log(`  ➜  http://localhost:${PORT}/health`);
+    console.log(`  ➜  Telefon uchun: http://<LAN-IP>:${PORT}\n`);
+  });
+}
+
+void main();
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`\n${signal} - server to'xtatilmoqda...`);

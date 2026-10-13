@@ -11,6 +11,7 @@ const express_1 = __importDefault(require("express"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const prisma_1 = require("./lib/prisma");
+const boot_1 = require("./boot");
 const error_1 = require("./middleware/error");
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const products_routes_1 = __importDefault(require("./routes/products.routes"));
@@ -77,11 +78,31 @@ if (node_fs_1.default.existsSync(clientHtml)) {
 }
 app.use(error_1.notFoundHandler);
 app.use(error_1.errorHandler);
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n  🧾  Shablon POS API tayyor`);
-    console.log(`  ➜  http://localhost:${PORT}/health`);
-    console.log(`  ➜  Telefon uchun: http://<LAN-IP>:${PORT}\n`);
-});
+let server;
+async function main() {
+    // Bo'sh bazani tayyorlash: do'kon, admin/kassirlar, mahsulotlar (idempotent).
+    try {
+        await (0, boot_1.ensureBootstrap)();
+        console.log("  ✔ Boshlang'ich ma'lumotlar tayyor (do'kon, foydalanuvchilar, mahsulotlar)");
+    }
+    catch (err) {
+        const message = err.message || String(err);
+        if (isProd) {
+            console.error('  ⚠️  Baza tayyorlashda xatolik:', message);
+            console.error('     DATABASE_URL sozlamasini tekshiring (Railway → Variables).');
+        }
+        else {
+            console.error('  ⚠️  Baza hozircha yetib bo\'lmadi:', message);
+            console.error('     Server ishga tushdi; /health dan holatni kuzating.');
+        }
+    }
+    server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`\n  🧾  Shablon POS API tayyor`);
+        console.log(`  ➜  http://localhost:${PORT}/health`);
+        console.log(`  ➜  Telefon uchun: http://<LAN-IP>:${PORT}\n`);
+    });
+}
+void main();
 async function shutdown(signal) {
     console.log(`\n${signal} - server to'xtatilmoqda...`);
     server.close(() => {
