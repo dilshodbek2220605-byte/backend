@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
+const node_fs_1 = __importDefault(require("node:fs"));
+const node_path_1 = __importDefault(require("node:path"));
 const cors_1 = __importDefault(require("cors"));
 const express_1 = __importDefault(require("express"));
 const helmet_1 = __importDefault(require("helmet"));
@@ -54,6 +56,25 @@ app.use('/api/products', products_routes_1.default);
 app.use('/api/users', users_routes_1.default);
 app.use('/api/sales', sales_routes_1.default);
 app.use('/api/reports', reports_routes_1.default);
+// Frontend build (production / Railway): tayyor client'ni ham bitta portda xizmat qilamiz.
+// Vite build natijasi <root>/client/dist da yotadi (npm run build).
+const clientDist = node_path_1.default.resolve(__dirname, '../../client/dist');
+const clientHtml = node_path_1.default.join(clientDist, 'index.html');
+if (node_fs_1.default.existsSync(clientHtml)) {
+    app.use(express_1.default.static(clientDist, {
+        maxAge: '7d',
+        setHeaders(res, filePath) {
+            // index.html doim yangi yuklansin (hash'li assetlar esa uzoq cache bilan)
+            if (filePath.endsWith('index.html'))
+                res.setHeader('Cache-Control', 'no-cache');
+        },
+    }));
+    // SPA fallback: /kirish, /kassa, /admin... marshrutlari uchun index.html qaytariladi.
+    // /api va /health so'rovlari notFound/error handler'larga boradi.
+    app.get(/^\/(?!api\/).*/, (_req, res) => {
+        res.sendFile(clientHtml);
+    });
+}
 app.use(error_1.notFoundHandler);
 app.use(error_1.errorHandler);
 const server = app.listen(PORT, '0.0.0.0', () => {

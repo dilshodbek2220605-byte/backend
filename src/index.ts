@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -55,6 +57,28 @@ app.use('/api/products', productsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/reports', reportsRoutes);
+
+// Frontend build (production / Railway): tayyor client'ni ham bitta portda xizmat qilamiz.
+// Vite build natijasi <root>/client/dist da yotadi (npm run build).
+const clientDist = path.resolve(__dirname, '../../client/dist');
+const clientHtml = path.join(clientDist, 'index.html');
+if (fs.existsSync(clientHtml)) {
+  app.use(
+    express.static(clientDist, {
+      maxAge: '7d',
+      setHeaders(res, filePath) {
+        // index.html doim yangi yuklansin (hash'li assetlar esa uzoq cache bilan)
+        if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+      },
+    }),
+  );
+
+  // SPA fallback: /kirish, /kassa, /admin... marshrutlari uchun index.html qaytariladi.
+  // /api va /health so'rovlari notFound/error handler'larga boradi.
+  app.get(/^\/(?!api\/).*/, (_req, res) => {
+    res.sendFile(clientHtml);
+  });
+}
 
 app.use(notFoundHandler);
 app.use(errorHandler);
