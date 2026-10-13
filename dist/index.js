@@ -1,0 +1,73 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
+const cors_1 = __importDefault(require("cors"));
+const express_1 = __importDefault(require("express"));
+const helmet_1 = __importDefault(require("helmet"));
+const morgan_1 = __importDefault(require("morgan"));
+const prisma_1 = require("./lib/prisma");
+const error_1 = require("./middleware/error");
+const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const products_routes_1 = __importDefault(require("./routes/products.routes"));
+const reports_routes_1 = __importDefault(require("./routes/reports.routes"));
+const sales_routes_1 = __importDefault(require("./routes/sales.routes"));
+const users_routes_1 = __importDefault(require("./routes/users.routes"));
+const app = (0, express_1.default)();
+const PORT = Number(process.env.PORT || 4000);
+const isProd = process.env.NODE_ENV === 'production';
+// Telefonda LAN orqali ochilganda ham ishlashi uchun origin tekshiruvi yumshoq
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+app.set('trust proxy', 1);
+app.use((0, helmet_1.default)({ crossOriginResourcePolicy: false }));
+app.use((0, cors_1.default)({
+    origin(origin, callback) {
+        // Origin yo'q (mobil brauzer/curl) yoki dev rejimi -> ruxsat
+        if (!origin || !isProd || allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+        }
+        callback(null, false);
+    },
+    credentials: true,
+}));
+app.use(express_1.default.json({ limit: '2mb' }));
+if (!isProd)
+    app.use((0, morgan_1.default)('dev'));
+/** Sog'liq tekshiruvi (server + baza) */
+app.get('/health', async (_req, res) => {
+    try {
+        await prisma_1.prisma.$queryRaw `SELECT 1`;
+        res.json({ status: 'ok', db: 'connected', time: new Date().toISOString() });
+    }
+    catch (err) {
+        res.status(503).json({ status: 'error', db: 'unreachable', message: err.message });
+    }
+});
+app.use('/api/auth', auth_routes_1.default);
+app.use('/api/products', products_routes_1.default);
+app.use('/api/users', users_routes_1.default);
+app.use('/api/sales', sales_routes_1.default);
+app.use('/api/reports', reports_routes_1.default);
+app.use(error_1.notFoundHandler);
+app.use(error_1.errorHandler);
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  🧾  Shablon POS API tayyor`);
+    console.log(`  ➜  http://localhost:${PORT}/health`);
+    console.log(`  ➜  Telefon uchun: http://<LAN-IP>:${PORT}\n`);
+});
+async function shutdown(signal) {
+    console.log(`\n${signal} - server to'xtatilmoqda...`);
+    server.close(() => {
+        void prisma_1.prisma.$disconnect().finally(() => process.exit(0));
+    });
+    setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+//# sourceMappingURL=index.js.map

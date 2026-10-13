@@ -1,0 +1,132 @@
+// ---------------------------------------------------------------------------
+//  SHABLON POS - Prisma sxemasi (PostgreSQL)
+//  Multi-tenant: HAR BIR jadvalda `storeId` bor va har bir so'rov shu bo'yicha
+//  filtrlanadi, shuning uchun bitta bazada bir nechta do'kon xavfsiz ishlaydi.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  QR
+}
+
+// ---------------------------------------------------------------------------
+model Store {
+  id                String   @id @default(cuid())
+  name              String
+  phone             String?
+  address           String?
+  currency          String   @default("UZS")
+  lowStockThreshold Int      @default(5)
+  createdAt         DateTime @default(now())
+
+  users    User[]
+  products Product[]
+  sales    Sale[]
+}
+
+// ---------------------------------------------------------------------------
+model User {
+  id           String   @id @default(cuid())
+  storeId      String
+  name         String
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(CASHIER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  store Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sales Sale[]
+
+  @@index([storeId, role])
+  @@index([storeId, isActive])
+}
+
+// ---------------------------------------------------------------------------
+model Product {
+  id        String   @id @default(cuid())
+  storeId   String
+  barcode   String
+  name      String
+  category  String   @default("Umumiy")
+  unit      String   @default("dona")
+  price     Decimal  @db.Decimal(14, 2)
+  costPrice Decimal? @db.Decimal(14, 2)
+  stock     Decimal  @default(0) @db.Decimal(14, 3)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  saleItems SaleItem[]
+
+  // Bitta do'kon ichida barcode takrorlanmasligi kerak
+  @@unique([storeId, barcode])
+  // Skaner uchun ENG MUHIM indeks: barcode bo'yicha tez qidiruv
+  @@index([barcode])
+  @@index([storeId, name])
+  @@index([storeId, category])
+  @@index([storeId, isActive])
+}
+
+// ---------------------------------------------------------------------------
+model Sale {
+  id            String        @id @default(cuid())
+  storeId       String
+  cashierId     String
+  totalAmount   Decimal       @db.Decimal(14, 2)
+  profitAmount  Decimal       @default(0) @db.Decimal(14, 2)
+  itemCount     Decimal       @default(0) @db.Decimal(14, 3)
+  paymentMethod PaymentMethod
+  amountPaid    Decimal?      @db.Decimal(14, 2)
+  changeAmount  Decimal?      @db.Decimal(14, 2)
+  note          String?
+  // Oflayn navbat uchun idempotent kalit: bir xil chek ikki marta yozilmaydi
+  clientRef     String?       @unique
+  createdAt     DateTime      @default(now())
+
+  store   Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  cashier User       @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+  items   SaleItem[]
+
+  @@index([storeId, createdAt])
+  @@index([storeId, cashierId])
+  @@index([storeId, paymentMethod])
+}
+
+// ---------------------------------------------------------------------------
+model SaleItem {
+  id String @id @default(cuid())
+
+  saleId    String
+  productId String?
+
+  // Tarixiy aniqlik uchun nusxa (snapshot): mahsulot keyin o'zgarsa ham chek to'g'ri qoladi
+  productName String
+  barcode     String?
+  unit        String  @default("dona")
+  quantity    Decimal @db.Decimal(14, 3)
+  price       Decimal @db.Decimal(14, 2)
+  unitCost    Decimal @default(0) @db.Decimal(14, 2)
+
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@index([productId])
+}
