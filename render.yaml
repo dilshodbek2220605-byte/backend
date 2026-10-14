@@ -1,0 +1,33 @@
+# Render Blueprint -- Shablon POS backend (Express + Prisma + PostgreSQL)
+# Render'da: New + > Blueprint > repo'ni tanlang > Apply.
+# Yoki New + > Web Service bilan qo'lda ham sozlash mumkin (README'ga qarang).
+
+databases:
+  - name: shablon-pos-db
+    plan: free # bepul reja ~30/90 kundan keyin o'chadi; doimiy uchun "basic-256mb" va h.k.
+    databaseName: shablon
+    user: shablon
+
+services:
+  - type: web
+    name: shablon-pos-api
+    runtime: node
+    plan: free
+    region: frankfurt # O'zbekistonga eng yaqin; DB bilan bir region bo'lishi shart
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shablon-pos-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true # Render kuchli tasodifiy qiymat yaratadi
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_ORIGIN
+        sync: false # Render so'raydi: Vercel domenini shu yerga yozing
