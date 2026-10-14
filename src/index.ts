@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
@@ -86,7 +87,28 @@ app.use(errorHandler);
 
 let server: ReturnType<typeof app.listen>;
 
+/**
+ * Migratsiyalarni ishga tushirish (idempotent).
+ * `npm start` allaqachon `prisma migrate deploy`ni bajaradi; bu esa start command
+ * noto'g'ri sozlangan platformalarda (masalan Render'da `node dist/index.js`) ham
+ * jadvallar yaratilishini ta'minlaydi. Xato bo'lsa server baribir ishga tushadi.
+ */
+function runMigrations(): void {
+  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  try {
+    execFileSync(npx, ['prisma', 'migrate', 'deploy'], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  } catch (err) {
+    console.error("  ⚠️  Migratsiyani qo'llab bo'lmadi:", (err as Error).message);
+  }
+}
+
 async function main(): Promise<void> {
+  // Jadvallar mavjudligini kafolatlash (bo'sh bazada migratsiyani qo'llaydi).
+  runMigrations();
+
   // Bo'sh bazani tayyorlash: do'kon, admin/kassirlar, mahsulotlar (idempotent).
   try {
     await ensureBootstrap();

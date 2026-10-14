@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
+const node_child_process_1 = require("node:child_process");
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const cors_1 = __importDefault(require("cors"));
@@ -79,7 +80,27 @@ if (node_fs_1.default.existsSync(clientHtml)) {
 app.use(error_1.notFoundHandler);
 app.use(error_1.errorHandler);
 let server;
+/**
+ * Migratsiyalarni ishga tushirish (idempotent).
+ * `npm start` allaqachon `prisma migrate deploy`ni bajaradi; bu esa start command
+ * noto'g'ri sozlangan platformalarda (masalan Render'da `node dist/index.js`) ham
+ * jadvallar yaratilishini ta'minlaydi. Xato bo'lsa server baribir ishga tushadi.
+ */
+function runMigrations() {
+    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    try {
+        (0, node_child_process_1.execFileSync)(npx, ['prisma', 'migrate', 'deploy'], {
+            stdio: 'inherit',
+            env: process.env,
+        });
+    }
+    catch (err) {
+        console.error("  ⚠️  Migratsiyani qo'llab bo'lmadi:", err.message);
+    }
+}
 async function main() {
+    // Jadvallar mavjudligini kafolatlash (bo'sh bazada migratsiyani qo'llaydi).
+    runMigrations();
     // Bo'sh bazani tayyorlash: do'kon, admin/kassirlar, mahsulotlar (idempotent).
     try {
         await (0, boot_1.ensureBootstrap)();
